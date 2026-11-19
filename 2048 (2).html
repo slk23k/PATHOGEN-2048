@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Патоген 2048 — Эволюция недугов</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Unbounded:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0E1013;
+    --surface: #161920;
+    --cell-empty: #1E232D;
+    --border: #2B3240;
+    --viral: #FF4D6D;
+    --psych: #38BDF8;
+    --hybrid: #C084FC;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    color: #F4F5F7;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .font-display { font-family: 'Unbounded', sans-serif; }
+  .font-mono-num { font-family: 'JetBrains Mono', monospace; }
+
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    touch-action: none;
+    user-select: none;
+    position: relative;
+  }
+
+  .tile-slot {
+    aspect-ratio: 1 / 1;
+    background: var(--cell-empty);
+    border-radius: 10px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tile {
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.15s ease;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .tile:hover {
+    transform: translateY(-1px);
+  }
+  .tile.selected-tile {
+    outline: 2px solid #FDE047;
+    outline-offset: 2px;
+  }
+  .tile.pop-in {
+    animation: popIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .tile.merge-pulse {
+    animation: mergePulse 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes popIn {
+    0% { transform: scale(0.55); opacity: 0.2; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes mergePulse {
+    0% { transform: scale(0.92); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+
+  .tile-name {
+    font-weight: 700;
+    line-height: 1.12;
+    word-break: break-word;
+    hyphens: auto;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+</style>
+</head>
+<body class="flex flex-col items-center justify-start py-5 px-3 sm:px-6">
+
+  <div class="w-full max-w-[520px] flex flex-col gap-4">
+    <!-- Header -->
+    <header class="flex items-start justify-between gap-3">
+      <div>
+        <h1 id="app-title" class="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-none">
+          ПАТОГЕН <span class="text-[#FF4D6D]">2048</span>
+        </h1>
+        <p id="app-subtitle" class="text-xs sm:text-sm text-slate-400 mt-1.5">
+          Складывай недуги от <span class="text-[#FF8FA3]">Насморка</span> и <span class="text-[#7DD3FC]">Стресса</span> до XI стадии
+        </p>
+      </div>
+      <div class="flex gap-2 shrink-0">
+        <div class="bg-[#161920] border border-[#2B3240] rounded-xl px-3 py-1.5 text-center min-w-[76px]">
+          <div id="label-score" class="text-[10px] uppercase tracking-wider text-slate-400">Счёт</div>
+          <div id="score-val" class="font-mono-num text-base sm:text-lg font-bold text-white">0</div>
+        </div>
+        <div class="bg-[#161920] border border-[#2B3240] rounded-xl px-3 py-1.5 text-center min-w-[76px]">
+          <div id="label-best" class="text-[10px] uppercase tracking-wider text-slate-400">Рекорд</div>
+          <div id="best-val" class="font-mono-num text-base sm:text-lg font-bold text-[#7DD3FC]">0</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Toolbar -->
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <button id="btn-new" class="px-3 py-2 rounded-xl bg-[#FF4D6D] hover:bg-[#e63e5c] active:scale-95 text-white text-xs sm:text-sm font-semibold transition">
+          Новая игра
+        </button>
+        <button id="btn-undo" class="px-3 py-2 rounded-xl bg-[#1E232D] hover:bg-[#272E3B] disabled:opacity-40 disabled:pointer-events-none border border-[#2B3240] text-slate-200 text-xs sm:text-sm font-medium transition">
+          Отмена
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btn-atlas" class="px-3 py-2 rounded-xl bg-[#1E232D] hover:bg-[#272E3B] border border-[#2B3240] text-slate-200 text-xs sm:text-sm font-medium transition">
+          Атлас (<span id="atlas-count">0</span>/29)
+        </button>
+        <button id="btn-sound" class="px-3 py-2 rounded-xl bg-[#1E232D] hover:bg-[#272E3B] border border-[#2B3240] text-slate-200 text-xs sm:text-sm font-medium transition" aria-label="Переключить звук">
+          Звук: Вкл
+        </button>
+        <button id="btn-lang" class="px-2.5 py-2 rounded-xl bg-[#1E232D] hover:bg-[#272E3B] border border-[#2B3240] text-[#7DD3FC] font-mono-num text-xs font-bold transition" aria-label="Switch language">
+          RU / EN
+        </button>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#FF4D6D]"></span> <span id="leg-viral">Вирусная</span></span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#38BDF8]"></span> <span id="leg-psych">Психика</span></span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#C084FC]"></span> <span id="leg-hybrid">Мутация (IV+)</span></span>
+      </div>
+      <span id="leg-controls" class="font-mono-num text-[11px] text-slate-500">WASD / Свайп</span>
+    </div>
+
+    <!-- Game Board -->
+    <div class="relative">
+      <div id="board" class="board-grid" aria-label="Игровое поле 4 на 4"></div>
+
+      <!-- Win / Game Over Overlay -->
+      <div id="overlay" class="hidden absolute inset-0 bg-[#0E1013]/88 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center p-6 text-center z-20">
+        <div id="overlay-badge" class="font-mono-num text-xs uppercase tracking-widest px-3 py-1 rounded-full mb-3 bg-[#FF4D6D]/20 text-[#FF8FA3] border border-[#FF4D6D]/40">
+          Стадия XI
+        </div>
+        <h2 id="overlay-title" class="font-display text-2xl sm:text-3xl font-extrabold text-white mb-2">
+          Пандемия достигнута
+        </h2>
+        <p id="overlay-desc" class="text-sm text-slate-300 max-w-xs mb-6">
+          Вы эволюционировали до максимального диагноза.
+        </p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <button id="btn-continue" class="hidden px-4 py-2.5 rounded-xl bg-[#38BDF8] hover:bg-[#0ea5e9] text-slate-950 font-semibold text-sm transition">
+            Продолжить дальше
+          </button>
+          <button id="btn-restart-overlay" class="px-4 py-2.5 rounded-xl bg-[#FF4D6D] hover:bg-[#e63e5c] text-white font-semibold text-sm transition">
+            Играть заново
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tile Inspector -->
+    <div id="inspector" class="bg-[#161920] border border-[#2B3240] rounded-xl p-3.5 flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <span id="insp-badge" class="font-mono-num text-[11px] font-bold px-2 py-0.5 rounded bg-[#1E232D] text-slate-300">Инспектор</span>
+          <span id="insp-branch" class="text-xs text-slate-400">Нажмите на любую плитку</span>
+        </div>
+        <div id="insp-title" class="text-sm sm:text-base font-semibold text-white mt-1 truncate">
+          Выберите клетку для деталей диагноза
+        </div>
+        <div id="insp-next" class="text-xs text-slate-400 mt-0.5">
+          Сливайте одинаковые ветки или разные с IV стадии
+        </div>
+      </div>
+    </div>
+
+    <!-- On-screen D-Pad for touch / mouse convenience -->
+    <div class="flex items-center justify-center gap-2 pt-1 sm:hidden">
+      <button data-dir="left" class="dpad-btn w-14 h-11 rounded-xl bg-[#161920] border border-[#2B3240] active:bg-[#272E3B] text-white font-bold text-lg">←</button>
+      <div class="flex flex-col gap-2">
+        <button data-dir="up" class="dpad-btn w-14 h-11 rounded-xl bg-[#161920] border border-[#2B3240] active:bg-[#272E3B] text-white font-bold text-lg">↑</button>
+        <button data-dir="down" class="dpad-btn w-14 h-11 rounded-xl bg-[#161920] border border-[#2B3240] active:bg-[#272E3B] text-white font-bold text-lg">↓</button>
+      </div>
+      <button data-dir="right" class="dpad-btn w-14 h-11 rounded-xl bg-[#161920] border border-[#2B3240] active:bg-[#272E3B] text-white font-bold text-lg">→</button>
+    </div>
+  </div>
+
+  <!-- Atlas Modal -->
+  <div id="atlas-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm z-40 flex items-center justify-center p-4">
+    <div class="bg-[#161920] border border-[#2B3240] rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-[#2B3240]">
+        <div>
+          <h3 id="atlas-title" class="font-display text-lg font-bold text-white">Медицинский атлас</h3>
+          <p id="atlas-subtitle" class="text-xs text-slate-400 mt-0.5">Все открытые вами стадии и мутации</p>
+        </div>
+        <button id="btn-close-atlas" class="w-8 h-8 rounded-lg bg-[#1E232D] hover:bg-[#2B3240] text-slate-300 font-bold text-sm">✕</button>
+      </div>
+      <div id="atlas-body" class="p-5 overflow-y-auto space-y-5 text-sm"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"];
+
+  const DICT_I18N = {
+    ru: {
+      viral: {
+        1:  { short: "Насморк", full: "Ринит (Насморк)", desc: "Лёгкое воспаление слизистой носа." },
+        2:  { short: "ОРВИ", full: "ОРВИ", desc: "Острая респираторная вирусная инфекция." },
+        3:  { short: "Ангина", full: "Острый тонзиллит (Ангина)", desc: "Воспаление нёбных миндалин." },
+        4:  { short: "Грипп", full: "Грипп", desc: "Высокая температура и интоксикация. Доступны кросс-мутации!" },
+        5:  { short: "Бронхит", full: "Острый бронхит", desc: "Воспаление слизистой бронхов и сильный кашель." },
+        6:  { short: "Пневмония", full: "Пневмония", desc: "Воспаление лёгочной ткани." },
+        7:  { short: "Гепатит", full: "Вирусный гепатит", desc: "Системное поражение печени." },
+        8:  { short: "Менингит", full: "Менингит", desc: "Воспаление оболочек головного и спинного мозга." },
+        9:  { short: "Сепсис", full: "Сепсис", desc: "Опасная системная реакция организма на инфекцию." },
+        10: { short: "Эбола", full: "Лихорадка Эбола", desc: "Тяжёлая геморрагическая лихорадка." },
+        11: { short: "Пандемия X", full: "Пандемия X", desc: "Финальный глобальный патоген XI стадии." }
+      },
+      psych: {
+        1:  { short: "Стресс", full: "Острый стресс", desc: "Базовая реакция перегрузки нервной системы." },
+        2:  { short: "Бессонница", full: "Бессонница", desc: "Хроническое нарушение засыпания и сна." },
+        3:  { short: "Выгорание", full: "Эмоциональное выгорание", desc: "Истощение мотивации и когнитивных ресурсов." },
+        4:  { short: "Паника", full: "Паническая атака", desc: "Внезапный приступ интенсивной тревоги. Доступны кросс-мутации!" },
+        5:  { short: "Фобия", full: "Специфическая фобия", desc: "Иррациональный навязчивый страх." },
+        6:  { short: "Депрессия", full: "Тяжёлая депрессия", desc: "Устойчивое снижение настроения и ангедония." },
+        7:  { short: "ОКР", full: "Обсессивно-компульсивное расстройство", desc: "Навязчивые мысли и ритуалы." },
+        8:  { short: "БАР", full: "Биполярное расстройство", desc: "Чередование мании и глубокой депрессии." },
+        9:  { short: "Психоз", full: "Острый психоз", desc: "Нарушение восприятия реальности." },
+        10: { short: "Шизофрения", full: "Шизофрения", desc: "Распад единства психических процессов." },
+        11: { short: "Распад", full: "Тотальный распад личности", desc: "Финальная стадия психологической ветки." }
+      },
+      hybrid: {
+        5:  { short: "Астен. криз", full: "Астенический криз", desc: "Гибрид Гриппа и Паники." },
+        6:  { short: "Вегет. срыв", full: "Вегетативный срыв", desc: "Гибрид Бронхита и Фобии." },
+        7:  { short: "Сом. коллапс", full: "Соматический коллапс", desc: "Гибрид Пневмонии и Депрессии." },
+        8:  { short: "Нейро-ИД", full: "Невротический иммунодефицит", desc: "Гибрид Гепатита и ОКР." },
+        9:  { short: "Делирий", full: "Нейротоксический делирий", desc: "Гибрид Менингита и БАР." },
+        10: { short: "Полипсихоз", full: "Полиорганный психоз", desc: "Гибрид Сепсиса и Психоза." },
+        11: { short: "Синдром X", full: "Синдром X-2048", desc: "Высшая гибридная катастрофа (Эбола + Шизофрения)." }
+      }
+    },
+    en: {
+      viral: {
+        1:  { short: "Cold", full: "Common Cold", desc: "Mild viral inflammation of the nasal mucosa." },
+        2:  { short: "URI", full: "Upper Respiratory Infection", desc: "Acute viral upper airway illness." },
+        3:  { short: "Tonsillitis", full: "Acute Tonsillitis", desc: "Inflammation of the tonsils and throat." },
+        4:  { short: "Flu", full: "Influenza (Flu)", desc: "High fever and systemic fatigue. Cross-mutations unlocked!" },
+        5:  { short: "Bronchitis", full: "Acute Bronchitis", desc: "Inflammation of the bronchial tubes." },
+        6:  { short: "Pneumonia", full: "Pneumonia", desc: "Severe inflammation of lung tissue." },
+        7:  { short: "Hepatitis", full: "Viral Hepatitis", desc: "Systemic viral liver inflammation." },
+        8:  { short: "Meningitis", full: "Meningitis", desc: "Inflammation of brain and spinal membranes." },
+        9:  { short: "Sepsis", full: "Sepsis", desc: "Life-threatening systemic response to infection." },
+        10: { short: "Ebola", full: "Ebola Fever", desc: "Severe hemorrhagic fever." },
+        11: { short: "Pandemic X", full: "Pandemic X", desc: "Final Tier XI global pathogen." }
+      },
+      psych: {
+        1:  { short: "Stress", full: "Acute Stress", desc: "Baseline nervous system overload." },
+        2:  { short: "Insomnia", full: "Insomnia", desc: "Chronic sleep onset and maintenance disorder." },
+        3:  { short: "Burnout", full: "Emotional Burnout", desc: "Depletion of motivation and cognitive energy." },
+        4:  { short: "Panic", full: "Panic Attack", desc: "Sudden surge of intense fear. Cross-mutations unlocked!" },
+        5:  { short: "Phobia", full: "Specific Phobia", desc: "Persistent irrational fear." },
+        6:  { short: "Depression", full: "Major Depression", desc: "Persistent depressed mood and anhedonia." },
+        7:  { short: "OCD", full: "Obsessive-Compulsive Disorder", desc: "Intrusive thoughts and compulsive rituals." },
+        8:  { short: "Bipolar", full: "Bipolar Disorder", desc: "Alternating episodes of mania and depression." },
+        9:  { short: "Psychosis", full: "Acute Psychosis", desc: "Severe disruption of reality perception." },
+        10: { short: "Schizo", full: "Schizophrenia", desc: "Fragmentation of thought and perception." },
+        11: { short: "Ego Collapse", full: "Total Ego Collapse", desc: "Final Tier XI psychological breakdown." }
+      },
+      hybrid: {
+        5:  { short: "Asthenic", full: "Asthenic Crisis", desc: "Hybrid of Flu and Panic Attack." },
+        6:  { short: "Autonomic", full: "Autonomic Breakdown", desc: "Hybrid of Bronchitis and Phobia." },
+        7:  { short: "Somatic", full: "Somatic Collapse", desc: "Hybrid of Pneumonia and Depression." },
+        8:  { short: "Neuro-ID", full: "Neurotic Immunodeficiency", desc: "Hybrid of Hepatitis and OCD." },
+        9:  { short: "Delirium", full: "Neurotoxic Delirium", desc: "Hybrid of Meningitis and Bipolar." },
+        10: { short: "Polypsych", full: "Multi-Organ Psychosis", desc: "Hybrid of Sepsis and Psychosis." },
+        11: { short: "Syndrome X", full: "Syndrome X-2048", desc: "Ultimate hybrid catastrophe (Ebola + Schizophrenia)." }
+      }
+    }
+  };
+
+  const UI_I18N = {
+    ru: {
+      docTitle: "Патоген 2048 — Эволюция недугов",
+      appTitle: 'ПАТОГЕН <span class="text-[#FF4D6D]">2048</span>',
+      appSubtitle: 'Складывай недуги от <span class="text-[#FF8FA3]">Насморка</span> и <span class="text-[#7DD3FC]">Стресса</span> до XI стадии',
+      score: "Счёт",
+      best: "Рекорд",
+      newGame: "Новая игра",
+      undo: "Отмена",
+      atlas: "Атлас",
+      soundOn: "Звук: Вкл",
+      soundOff: "Звук: Выкл",
+      legViral: "Вирусная",
+      legPsych: "Психика",
+      legHybrid: "Мутация (IV+)",
+      legControls: "WASD / Свайп",
+      inspBadge: "Инспектор",
+      inspBranch: "Нажмите на любую плитку",
+      inspTitle: "Выберите клетку для деталей диагноза",
+      inspNext: "Сливайте одинаковые ветки или разные с IV стадии",
+      atlasTitle: "Медицинский атлас",
+      atlasSubtitle: "Все открытые вами стадии и мутации",
+      locked: "Не открыто",
+      continueBtn: "Продолжить дальше",
+      restartBtn: "Играть заново",
+      winBadge: "Стадия XI достигнута",
+      winTitle: "Предельная эволюция!",
+      winDesc: "Вы собрали финальный диагноз 2048. Можно продолжить в бесконечном режиме или начать новую партию.",
+      loseBadge: "Поле заполнено",
+      loseTitle: "Слияния невозможны",
+      loseDesc: (s) => `Итоговый счёт: ${s}. Попробуйте свести разные ветки на IV+ уровне, чтобы избежать тупиков.`,
+      branchNames: { viral: "Вирусная ветка", psych: "Психологическая ветка", hybrid: "Гибридная мутация" },
+      atlasSections: { viral: "Вирусная ветка", psych: "Психологическая ветка", hybrid: "Гибридные мутации" },
+      stageWord: "Стадия",
+      maxStage: "Максимальная стадия.",
+      nextArrow: "Далее →",
+      crossHint: " · возможна кросс-мутация"
+    },
+    en: {
+      docTitle: "Pathogen 2048 — Disease Evolution",
+      appTitle: 'PATHOGEN <span class="text-[#FF4D6D]">2048</span>',
+      appSubtitle: 'Merge conditions from <span class="text-[#FF8FA3]">Cold</span> & <span class="text-[#7DD3FC]">Stress</span> up to Tier XI',
+      score: "Score",
+      best: "Best",
+      newGame: "New Game",
+      undo: "Undo",
+      atlas: "Atlas",
+      soundOn: "Sound: On",
+      soundOff: "Sound: Off",
+      legViral: "Viral",
+      legPsych: "Psych",
+      legHybrid: "Mutation (IV+)",
+      legControls: "WASD / Swipe",
+      inspBadge: "Inspector",
+      inspBranch: "Tap any tile",
+      inspTitle: "Select a tile to inspect its diagnosis",
+      inspNext: "Merge matching branches, or cross-merge at Tier IV+",
+      atlasTitle: "Medical Atlas",
+      atlasSubtitle: "All discovered stages and hybrid mutations",
+      locked: "Undiscovered",
+      continueBtn: "Keep Playing",
+      restartBtn: "Play Again",
+      winBadge: "Tier XI Reached",
+      winTitle: "Peak Evolution!",
+      winDesc: "You reached the final 2048 diagnosis. Keep playing in endless mode or start a new run.",
+      loseBadge: "Board Full",
+      loseTitle: "No Moves Left",
+      loseDesc: (s) => `Final score: ${s}. Try cross-merging different branches at Tier IV+ to avoid deadlocks.`,
+      branchNames: { viral: "Viral Branch", psych: "Psychological Branch", hybrid: "Hybrid Mutation" },
+      atlasSections: { viral: "Viral Branch", psych: "Psychological Branch", hybrid: "Hybrid Mutations" },
+      stageWord: "Tier",
+      maxStage: "Maximum tier reached.",
+      nextArrow: "Next →",
+      crossHint: " · cross-mutation ready"
+    }
+  };
+
+  // State
+  let lang = "ru";
+  let grid = Array.from({ length: 4 }, () => Array(4).fill(null));
+  let score = 0;
+  let bestScore = 0;
+  let prevSnapshot = null;
+  let won = false;
+  let keepPlaying = false;
+  let gameOver = false;
+  let soundEnabled = true;
+  let selectedId = null;
+  let tileUid = 1;
+  let discovered = new Set();
+  let audioCtx = null;
+
+  try {
+    const savedLang = localStorage.getItem("pathogen2048_lang");
+    if (savedLang === "en" || savedLang === "ru") lang = savedLang;
+    bestScore = parseInt(localStorage.getItem("pathogen2048_best") || "0", 10) || 0;
+    const savedDisc = JSON.parse(localStorage.getItem("pathogen2048_atlas") || "[]");
+    if (Array.isArray(savedDisc)) savedDisc.forEach(k => discovered.add(k));
+  } catch (_) {}
+
+  // DOM refs
+  const boardEl = document.getElementById("board");
+  const scoreEl = document.getElementById("score-val");
+  const bestEl = document.getElementById("best-val");
+  const btnNew = document.getElementById("btn-new");
+  const btnUndo = document.getElementById("btn-undo");
+  const btnAtlas = document.getElementById("btn-atlas");
+  const btnSound = document.getElementById("btn-sound");
+  const btnLang = document.getElementById("btn-lang");
+  const overlayEl = document.getElementById("overlay");
+  const overlayBadge = document.getElementById("overlay-badge");
+  const overlayTitle = document.getElementById("overlay-title");
+  const overlayDesc = document.getElementById("overlay-desc");
+  const btnContinue = document.getElementById("btn-continue");
+  const btnRestartOverlay = document.getElementById("btn-restart-overlay");
+  const inspBadge = document.getElementById("insp-badge");
+  const inspBranch = document.getElementById("insp-branch");
+  const inspTitle = document.getElementById("insp-title");
+  const inspNext = document.getElementById("insp-next");
+  const atlasModal = document.getElementById("atlas-modal");
+  const atlasBody = document.getElementById("atlas-body");
+
+  function applyLanguageUI() {
+    const t = UI_I18N[lang];
+    document.documentElement.lang = lang;
+    document.title = t.docTitle;
+    document.getElementById("app-title").innerHTML = t.appTitle;
+    document.getElementById("app-subtitle").innerHTML = t.appSubtitle;
+    document.getElementById("label-score").textContent = t.score;
+    document.getElementById("label-best").textContent = t.best;
+    btnNew.textContent = t.newGame;
+    btnUndo.textContent = t.undo;
+    btnAtlas.innerHTML = `${t.atlas} (<span id="atlas-count">${discovered.size}</span>/29)`;
+    btnSound.textContent = soundEnabled ? t.soundOn : t.soundOff;
+    btnLang.textContent = lang === "ru" ? "RU → EN" : "EN → RU";
+    document.getElementById("leg-viral").textContent = t.legViral;
+    document.getElementById("leg-psych").textContent = t.legPsych;
+    document.getElementById("leg-hybrid").textContent = t.legHybrid;
+    document.getElementById("leg-controls").textContent = t.legControls;
+    document.getElementById("atlas-title").textContent = t.atlasTitle;
+    document.getElementById("atlas-subtitle").textContent = t.atlasSubtitle;
+    btnContinue.textContent = t.continueBtn;
+    btnRestartOverlay.textContent = t.restartBtn;
+
+    if (!selectedId) {
+      inspBadge.textContent = t.inspBadge;
+      inspBranch.textContent = t.inspBranch;
+      inspTitle.textContent = t.inspTitle;
+      inspNext.textContent = t.inspNext;
+    }
+    if (!overlayEl.classList.contains("hidden")) {
+      showOverlay(won && !keepPlaying ? "win" : "lose");
+    }
+    if (!atlasModal.classList.contains("hidden")) {
+      renderAtlas();
+    }
+  }
+
+  // Audio synthesizer
+  function playTone(type, tier = 1) {
+    if (!soundEnabled) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (type === "move") {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(95, now + 0.06);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.start(now);
+        osc.stop(now + 0.065);
+      } else if (type === "merge") {
+        osc.type = "triangle";
+        const freq = 220 + tier * 38;
+        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.25, now + 0.11);
+        gain.gain.setValueAtTime(0.11, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.13);
+      } else if (type === "hybrid") {
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(640, now + 0.18);
+        gain.gain.setValueAtTime(0.09, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.21);
+      }
+    } catch (_) {}
+  }
+
+  function recordDiscovery(branch, tier) {
+    discovered.add(`${branch}:${tier}`);
+    try {
+      localStorage.setItem("pathogen2048_atlas", JSON.stringify([...discovered]));
+    } catch (_) {}
+  }
+
+  function makeTile(tier, branch, isNew = false, isMerged = false) {
+    recordDiscovery(branch, tier);
+    return {
+      id: tileUid++,
+      tier,
+      branch,
+      isNew,
+      isMerged,
+      mergedThisTurn: false
+    };
+  }
+
+  function spawnRandomTile() {
+    const empties = [];
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        if (!grid[r][c]) empties.push([r, c]);
+      }
+    }
+    if (empties.length === 0) return false;
+    const [r, c] = empties[Math.floor(Math.random() * empties.length)];
+    const tier = Math.random() < 0.9 ? 1 : 2;
+    const branch = Math.random() < 0.5 ? "viral" : "psych";
+    grid[r][c] = makeTile(tier, branch, true, false);
+    return true;
+  }
+
+  function cloneGrid(g) {
+    return g.map(row => row.map(cell => cell ? { ...cell, isNew: false, isMerged: false, mergedThisTurn: false } : null));
+  }
+
+  function canMerge(a, b) {
+    if (!a || !b) return false;
+    if (a.mergedThisTurn || b.mergedThisTurn) return false;
+    if (a.tier !== b.tier || a.tier >= 11) return false;
+    if (a.branch === b.branch) return true;
+    if (a.branch === "hybrid" || b.branch === "hybrid") return true;
+    return a.tier >= 4;
+  }
+
+  function promoteTiles(a, b) {
+    const nextTier = a.tier + 1;
+    let nextBranch = a.branch;
+    let isCross = false;
+    if (a.branch !== b.branch) {
+      if (a.branch === "hybrid" && b.branch !== "hybrid") {
+        nextBranch = b.branch;
+      } else if (b.branch === "hybrid" && a.branch !== "hybrid") {
+        nextBranch = a.branch;
+      } else {
+        nextBranch = "hybrid";
+        isCross = true;
+      }
+    }
+    const basePts = Math.pow(2, nextTier);
+    score += isCross ? Math.round(basePts * 1.5) : basePts;
+    if (score > bestScore) {
+      bestScore = score;
+      try { localStorage.setItem("pathogen2048_best", String(bestScore)); } catch (_) {}
+    }
+    return { tile: makeTile(nextTier, nextBranch, false, true), isCross };
+  }
+
+  function slideLineLeft(line) {
+    const compact = line.filter(Boolean);
+    const out = [];
+    let moved = false;
+    let maxMergedTier = 0;
+    let crossHappened = false;
+
+    for (let i = 0; i < compact.length; i++) {
+      const curr = compact[i];
+      const next = compact[i + 1];
+      if (next && canMerge(curr, next)) {
+        const res = promoteTiles(curr, next);
+        res.tile.mergedThisTurn = true;
+        out.push(res.tile);
+        maxMergedTier = Math.max(maxMergedTier, res.tile.tier);
+        if (res.isCross) crossHappened = true;
+        i++;
+        moved = true;
+      } else {
+        out.push(curr);
+      }
+    }
+    while (out.length < 4) out.push(null);
+    for (let i = 0; i < 4; i++) {
+      if (line[i] !== out[i]) moved = true;
+    }
+    return { out, moved, maxMergedTier, crossHappened };
+  }
+
+  function rotateCW(mat) {
+    const res = Array.from({ length: 4 }, () => Array(4).fill(null));
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        res[c][3 - r] = mat[r][c];
+      }
+    }
+    return res;
+  }
+
+  function hasAnyMoves() {
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const cell = grid[r][c];
+        if (!cell) return true;
+        if (c < 3 && canMerge(cell, grid[r][c + 1])) return true;
+        if (r < 3 && canMerge(cell, grid[r + 1][c])) return true;
+      }
+    }
+    return false;
+  }
+
+  function checkState() {
+    let reached11 = false;
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        if (grid[r][c] && grid[r][c].tier >= 11) reached11 = true;
+      }
+    }
+    if (reached11 && !won && !keepPlaying) {
+      won = true;
+      showOverlay("win");
+      return;
+    }
+    if (!hasAnyMoves()) {
+      gameOver = true;
+      showOverlay("lose");
+    }
+  }
+
+  function showOverlay(mode) {
+    const t = UI_I18N[lang];
+    overlayEl.classList.remove("hidden");
+    if (mode === "win") {
+      overlayBadge.textContent = t.winBadge;
+      overlayBadge.className = "font-mono-num text-xs uppercase tracking-widest px-3 py-1 rounded-full mb-3 bg-[#38BDF8]/20 text-[#7DD3FC] border border-[#38BDF8]/40";
+      overlayTitle.textContent = t.winTitle;
+      overlayDesc.textContent = t.winDesc;
+      btnContinue.classList.remove("hidden");
+    } else {
+      overlayBadge.textContent = t.loseBadge;
+      overlayBadge.className = "font-mono-num text-xs uppercase tracking-widest px-3 py-1 rounded-full mb-3 bg-[#FF4D6D]/20 text-[#FF8FA3] border border-[#FF4D6D]/40";
+      overlayTitle.textContent = t.loseTitle;
+      overlayDesc.textContent = t.loseDesc(score);
+      btnContinue.classList.add("hidden");
+    }
+  }
+
+  function hideOverlay() {
+    overlayEl.classList.add("hidden");
+  }
+
+  function move(dir) {
+    if (gameOver || (won && !keepPlaying)) return;
+
+    const snapshot = { grid: cloneGrid(grid), score, won, keepPlaying };
+    let work = cloneGrid(grid);
+    const rotMap = { left: 0, down: 1, right: 2, up: 3 };
+    const rots = rotMap[dir];
+
+    for (let i = 0; i < rots; i++) work = rotateCW(work);
+
+    let anyMoved = false;
+    let bestMergeTier = 0;
+    let anyCross = false;
+
+    for (let r = 0; r < 4; r++) {
+      const { out, moved, maxMergedTier, crossHappened } = slideLineLeft(work[r]);
+      work[r] = out;
+      if (moved) anyMoved = true;
+      bestMergeTier = Math.max(bestMergeTier, maxMergedTier);
+      if (crossHappened) anyCross = true;
+    }
+
+    for (let i = 0; i < (4 - rots) % 4; i++) work = rotateCW(work);
+
+    if (!anyMoved) return;
+
+    prevSnapshot = snapshot;
+    grid = work;
+    spawnRandomTile();
+
+    if (anyCross) playTone("hybrid", bestMergeTier);
+    else if (bestMergeTier > 0) playTone("merge", bestMergeTier);
+    else playTone("move");
+
+    render();
+    checkState();
+  }
+
+  function tileColors(branch, tier) {
+    const t = (tier - 1) / 10;
+    if (branch === "viral") {
+      const bgL = Math.round(18 + t * 28);
+      const bg = `hsl(348, ${Math.round(35 + t * 50)}%, ${bgL}%)`;
+      const fg = tier >= 9 ? "#FFFFFF" : "#FFE4E9";
+      return { bg, fg };
+    }
+    if (branch === "psych") {
+      const bgL = Math.round(17 + t * 25);
+      const bg = `hsl(199, ${Math.round(35 + t * 50)}%, ${bgL}%)`;
+      const fg = tier >= 9 ? "#FFFFFF" : "#E0F2FE";
+      return { bg, fg };
+    }
+    const bg = `hsl(272, ${Math.round(45 + t * 35)}%, ${Math.round(22 + t * 22)}%)`;
+    return { bg, fg: "#F5F3FF" };
+  }
+
+  function updateInspector(tile) {
+    if (!tile) return;
+    selectedId = tile.id;
+    const t = UI_I18N[lang];
+    const dict = DICT_I18N[lang];
+    const entry = dict[tile.branch][tile.tier];
+    inspBadge.textContent = `${t.stageWord} ${ROMAN[tile.tier]} (${Math.pow(2, tile.tier)})`;
+    inspBranch.textContent = t.branchNames[tile.branch];
+    inspTitle.textContent = entry.full;
+    if (tile.tier >= 11) {
+      inspNext.textContent = `${entry.desc} ${t.maxStage}`;
+    } else {
+      const nextSame = dict[tile.branch][tile.tier + 1]?.short || "—";
+      const crossNote = tile.tier >= 4 && tile.branch !== "hybrid" ? t.crossHint : "";
+      inspNext.textContent = `${entry.desc} ${t.nextArrow} ${nextSame}${crossNote}`;
+    }
+  }
+
+  function render() {
+    const dict = DICT_I18N[lang];
+    scoreEl.textContent = String(score);
+    bestEl.textContent = String(bestScore);
+    const atlasCountSpan = document.getElementById("atlas-count");
+    if (atlasCountSpan) atlasCountSpan.textContent = String(discovered.size);
+    btnUndo.disabled = !prevSnapshot;
+
+    boardEl.innerHTML = "";
+    let selectedTile = null;
+
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const slot = document.createElement("div");
+        slot.className = "tile-slot";
+        const tile = grid[r][c];
+        if (tile) {
+          const entry = dict[tile.branch][tile.tier];
+          const colors = tileColors(tile.branch, tile.tier);
+          const el = document.createElement("div");
+          el.className = "tile";
+          if (tile.isNew) el.classList.add("pop-in");
+          if (tile.isMerged) el.classList.add("merge-pulse");
+          if (tile.id === selectedId) {
+            el.classList.add("selected-tile");
+            selectedTile = tile;
+          }
+          el.style.background = colors.bg;
+          el.style.color = colors.fg;
+
+          const len = entry.short.length;
+          const fontSize = len > 11 ? "11px" : len > 8 ? "12.5px" : "14px";
+
+          el.innerHTML = `
+            <div class="w-full flex items-center justify-between text-[10px] font-mono-num opacity-85">
+              <span>${ROMAN[tile.tier]}</span>
+              <span>${Math.pow(2, tile.tier)}</span>
+            </div>
+            <div class="tile-name my-auto px-0.5" style="font-size:${fontSize}">${entry.short}</div>
+            <div class="w-full flex justify-center">
+              <span class="w-4 h-1 rounded-full" style="background:${tile.branch === 'viral' ? '#FF4D6D' : tile.branch === 'psych' ? '#38BDF8' : '#C084FC'}"></span>
+            </div>
+          `;
+          el.addEventListener("click", () => {
+            updateInspector(tile);
+            render();
+          });
+          slot.appendChild(el);
+        }
+        boardEl.appendChild(slot);
+      }
+    }
+    if (selectedTile) {
+      updateInspector(selectedTile);
+    } else if (selectedId !== null) {
+      selectedId = null;
+      applyLanguageUI();
+    }
+  }
+
+  function renderAtlas() {
+    const t = UI_I18N[lang];
+    const dict = DICT_I18N[lang];
+    const sections = [
+      { key: "viral", title: t.atlasSections.viral, color: "text-[#FF8FA3]" },
+      { key: "psych", title: t.atlasSections.psych, color: "text-[#7DD3FC]" },
+      { key: "hybrid", title: t.atlasSections.hybrid, color: "text-[#D8B4FE]" }
+    ];
+    atlasBody.innerHTML = sections.map(sec => {
+      const items = Object.entries(dict[sec.key]).map(([tier, info]) => {
+        const unlocked = discovered.has(`${sec.key}:${tier}`);
+        return `
+          <div class="flex items-center justify-between py-1.5 border-b border-[#2B3240]/60">
+            <div>
+              <span class="font-mono-num text-xs text-slate-400 mr-2">${ROMAN[tier]}</span>
+              <span class="${unlocked ? 'text-white font-medium' : 'text-slate-600'}">
+                ${unlocked ? info.full : t.locked}
+              </span>
+            </div>
+            <span class="font-mono-num text-xs ${unlocked ? sec.color : 'text-slate-600'}">${Math.pow(2, tier)}</span>
+          </div>
+        `;
+      }).join("");
+      return `<div><h4 class="font-display text-sm font-bold ${sec.color} mb-2">${sec.title}</h4>${items}</div>`;
+    }).join("");
+  }
+
+  function newGame() {
+    grid = Array.from({ length: 4 }, () => Array(4).fill(null));
+    score = 0;
+    prevSnapshot = null;
+    won = false;
+    keepPlaying = false;
+    gameOver = false;
+    selectedId = null;
+    hideOverlay();
+    spawnRandomTile();
+    spawnRandomTile();
+    applyLanguageUI();
+    render();
+  }
+
+  // Controls
+  btnNew.addEventListener("click", newGame);
+  btnRestartOverlay.addEventListener("click", newGame);
+  btnContinue.addEventListener("click", () => {
+    keepPlaying = true;
+    hideOverlay();
+  });
+  btnUndo.addEventListener("click", () => {
+    if (!prevSnapshot) return;
+    grid = prevSnapshot.grid;
+    score = prevSnapshot.score;
+    won = prevSnapshot.won;
+    keepPlaying = prevSnapshot.keepPlaying;
+    gameOver = false;
+    prevSnapshot = null;
+    hideOverlay();
+    render();
+  });
+  btnSound.addEventListener("click", () => {
+    soundEnabled = !soundEnabled;
+    btnSound.textContent = soundEnabled ? UI_I18N[lang].soundOn : UI_I18N[lang].soundOff;
+  });
+  btnLang.addEventListener("click", () => {
+    lang = lang === "ru" ? "en" : "ru";
+    try { localStorage.setItem("pathogen2048_lang", lang); } catch (_) {}
+    applyLanguageUI();
+    render();
+  });
+  btnAtlas.addEventListener("click", () => {
+    renderAtlas();
+    atlasModal.classList.remove("hidden");
+  });
+  document.getElementById("btn-close-atlas").addEventListener("click", () => {
+    atlasModal.classList.add("hidden");
+  });
+  atlasModal.addEventListener("click", (e) => {
+    if (e.target === atlasModal) atlasModal.classList.add("hidden");
+  });
+
+  document.querySelectorAll(".dpad-btn").forEach(btn => {
+    btn.addEventListener("click", () => move(btn.dataset.dir));
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (!atlasModal.classList.contains("hidden")) {
+      if (e.code === "Escape") atlasModal.classList.add("hidden");
+      return;
+    }
+    const map = {
+      ArrowLeft: "left", KeyA: "left",
+      ArrowRight: "right", KeyD: "right",
+      ArrowUp: "up", KeyW: "up",
+      ArrowDown: "down", KeyS: "down"
+    };
+    const dir = map[e.code];
+    if (dir) {
+      e.preventDefault();
+      move(dir);
+    }
+  });
+
+  let touchStartX = 0, touchStartY = 0;
+  boardEl.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  boardEl.addEventListener("touchend", (e) => {
+    if (e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? "right" : "left");
+    else move(dy > 0 ? "down" : "up");
+  }, { passive: true });
+
+  applyLanguageUI();
+  newGame();
+})();
+</script>
+</body>
+</html>
